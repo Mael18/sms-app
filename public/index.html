@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Family SMS</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:#f4f7fb;color:#172033}
+.wrap{max-width:620px;margin:auto;padding:18px}.card{background:#fff;border-radius:20px;padding:20px;box-shadow:0 8px 30px #17203314;margin-bottom:16px}
+h1{margin:0 0 5px}.sub,.small{color:#687386;font-size:14px}label{display:block;font-weight:700;margin:14px 0 6px}
+input,textarea,button{width:100%;padding:13px;border-radius:12px;font:inherit}input,textarea{border:1px solid #d7dce5;background:#fff}textarea{min-height:120px}
+button{border:0;background:#2563eb;color:white;font-weight:800;cursor:pointer;margin-top:10px}button:disabled{opacity:.6}
+.status{padding:12px;border-radius:12px;background:#eef2f7;margin-top:14px;white-space:pre-wrap;font-size:14px}
+.contact{padding:12px;border:1px solid #e1e6ef;border-radius:12px;margin-top:8px}.contact button{margin-top:7px}
+</style></head>
+<body><div class="wrap">
+<div class="card"><h1>📱 Family SMS</h1><div class="sub">Wi-Fi → internet → your Globe SMS gateway</div></div>
+
+<div class="card"><h2>Send SMS</h2>
+<label>Family PIN</label><input id="pin" type="password" inputmode="numeric" placeholder="Enter the family PIN">
+<label>Recipient</label><input id="phone" inputmode="tel" placeholder="09XXXXXXXXX or +639XXXXXXXXX">
+<label>Message</label><textarea id="message" maxlength="1600" placeholder="Type your message..."></textarea>
+<div class="small" id="count">0 / 1600</div>
+<button id="send" onclick="sendSMS()">SEND SMS</button>
+<div id="status" class="status">Ready.</div></div>
+
+<div class="card"><h2>Family contacts</h2>
+<input id="name" placeholder="Name"><input id="cphone" inputmode="tel" placeholder="09XXXXXXXXX">
+<button onclick="addContact()">Add contact</button><div id="contacts"></div></div>
+
+<script>
+const $=id=>document.getElementById(id);
+function norm(v){v=v.trim().replace(/[^\d+]/g,"");if(/^09\d{9}$/.test(v))return "+63"+v.slice(1);if(/^9\d{9}$/.test(v))return "+63"+v;return v}
+function render(){let a=JSON.parse(localStorage.getItem("familyContacts")||"[]");$("contacts").innerHTML=a.map((x,i)=>`<div class="contact"><b>${esc(x.name)}</b><div class="small">${esc(x.phone)}</div><button onclick="useContact(${i})">Use</button></div>`).join("")}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function addContact(){let name=$("name").value.trim(),phone=norm($("cphone").value);if(!name||!phone)return;$("name").value="";$("cphone").value="";let a=JSON.parse(localStorage.getItem("familyContacts")||"[]");a.push({name,phone});localStorage.setItem("familyContacts",JSON.stringify(a));render()}
+function useContact(i){let a=JSON.parse(localStorage.getItem("familyContacts")||"[]");$("phone").value=a[i].phone}
+$("message").addEventListener("input",()=>$("count").textContent=$("message").value.length+" / 1600");
+$("pin").value=localStorage.getItem("familyPin")||"";
+$("pin").addEventListener("input",()=>localStorage.setItem("familyPin",$("pin").value));
+async function sendSMS(){
+ const to=norm($("phone").value), message=$("message").value.trim(), pin=$("pin").value.trim();
+ if(!pin){$("status").textContent="Enter the family PIN.";return}
+ if(!to||!message){$("status").textContent="Enter a recipient and message.";return}
+ $("send").disabled=true;$("status").textContent="Sending...";
+ try{
+  const r=await fetch("/api/send-sms",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to,message,pin})});
+  const data=await r.json();
+  if(!r.ok){
+   if(r.status===401) throw new Error("Incorrect PIN.");
+   if(r.status===429) throw new Error("Too many messages sent recently. Please wait a bit.");
+   throw new Error((data.error||"SMS failed")+(data.gateway?"\n"+JSON.stringify(data.gateway):""));
+  }
+  $("status").textContent="✓ SMS accepted by your gateway.";
+  $("message").value="";$("count").textContent="0 / 1600";
+ }catch(e){$("status").textContent="✕ "+e.message}
+ finally{$("send").disabled=false}
+}
+render();
+</script></body></html>
